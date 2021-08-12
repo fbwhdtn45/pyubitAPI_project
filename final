@@ -1,0 +1,238 @@
+import pyupbit
+import time
+
+#========================= 정보 입력 =========================#
+# 구매한 코인 이름
+coin_name = "KRW-BTG"
+# 익절 수익률 (= 0.3%)
+cut_good = 5
+# 손절 수익률 (= -0.3%)
+cut_bad = -3
+# 프로그램 끝낼 원금대비 손절비율
+limit_bad_rate = -10 # 원금대비 -5프로 이상 손해 시, 자동프로그램 종료
+# 프로그램 끝낼 원금대비 익절비율
+limit_rate = 50 # 원금대비 30프로 이상 수익 시, 자동프로그램 종료
+# count
+good_count = 1
+bad_count = 1
+# access_key
+access_key = "96mcEvHwwBbt7Dt3WKSzvtZv5hpfn5SMEpSLHrCy"
+# secret_key
+secret_key = "rKuxoRN0DgUnOzSFYFfABWowkT54WB3Pmxjqzcns"
+#========================= 정보 입력 =========================#
+# 매수/매도 되었나 안되었나 변수
+# 0 : 아무것도 안한 상태 or 매도 완료
+# 1 : 매수 진행/재진행
+# 2 : 매수 완료
+# 3 : 매도 진행/재진행
+trade = 0
+# 구매 가격
+coin_money_buyed = 0.0
+# 매수/매도 uuid
+uuid = ""
+# 매도 호가
+coin_money_current_selling = 0.0
+# 매수 호가
+coin_money_current_buying = 0.0
+# 매도 신청한 가격
+coin_money_selling = 0.0
+# 매수 신청한 가격
+coin_money_buying = 0.0
+# 수익률
+earning_rate = 0.0
+# 총 수익률
+total_earning_rate = 0.0
+# 현재 잔고
+my_current_money = 0.0
+# upbit 접속 API
+upbit = pyupbit.Upbit(access_key,secret_key)
+# 주문 취소 매개변수
+bb = False
+# 첫 시작 money
+start_money = float(upbit.get_balance("KRW"))
+# 최소 보장 금액
+margine_money = start_money * (100.0 + limit_bad_rate) / 100.0
+# 최대 보장 금액
+limit_money = start_money * (100.0 + limit_rate) / 100.0
+
+# 최신 매도/매수 호가, 보유 KRW 가져오기
+def get_data() :
+    global coin_money_current_buying, coin_money_current_selling, coin_name,upbit, my_current_money
+    orderbook = pyupbit.get_orderbook(coin_name)
+    bids_asks = orderbook[0]['orderbook_units']
+
+    # 매도 호가
+    coin_money_current_selling = float(bids_asks[0]['ask_price'])
+    # 매수 호가
+    coin_money_current_buying = float(bids_asks[0]['bid_price'])
+
+    # 현재 보유 KRW
+    my_current_money = float(upbit.get_balance("KRW"))
+
+# 코인 구매 ( a: coin_name / b : coin_money_current_buying)
+def buy(a,b) :
+    global upbit, uuid, coin_money_buying, coin_money_buyed, my_current_money
+    # 매수 진행
+    get_data()
+    buy_info = upbit.buy_limit_order(a,b, (my_current_money-1650000.0) / b)
+    print(buy_info)
+    try :
+        uuid = buy_info['uuid']
+    except :
+        time.sleep(0.3)
+        uuid = buy_info['uuid']
+
+    # 매수 신청 가격 저장
+    coin_money_buying = b
+    time.sleep(0.3)
+
+# 코인 판매 ( a : coin_name / b : coin_money_current_selling)
+def sell(a,b) :
+    global upbit, uuid, coin_money_selling
+    # 매도 진행
+    sell_info = upbit.sell_limit_order(a, b, upbit.get_balance(a))
+    #print("매도 정보 : " + str(sell_info))
+    try :
+        uuid = sell_info['uuid']
+    except :
+        time.sleep(0.3)
+        sell_info['uuid']
+    # 매도 신청 가격 저장
+    coin_money_selling = b
+    time.sleep(0.3)
+
+# 주문 취소 ( a: coin_name)
+def cancel_trade(a) :
+    global upbit,uuid
+    #print("주문 취소 진행 중...")
+    if not check_trade_complete(a) :
+        #print("취소 정보 : " + str(upbit.cancel_order(uuid)))
+        try :
+            res = upbit.cancel_order(uuid)
+            while True :
+                if not check_trade_complete(a) :
+                    time.sleep(0.1)
+                    continue
+                else :
+                    print("주문 취소 완료")
+                    return True
+        except :
+            return True
+    else : 
+        print("이미 체결됨 / 주문 취소 실패")
+        return True
+
+# 미체결/체결 확인 ( a: coin_name)
+def check_trade_complete(a) :
+    global upbit, uuid
+    if not upbit.get_order(a,"wait") :
+        return True
+    else : 
+        return False
+
+
+
+def trade_0() :
+    global trade, total_earning_rate, my_current_money, margine_money, coin_name, coin_money_current_buying, trade, upbit
+
+    time.sleep(0.3)
+    get_data()
+    total_earning_rate = round((my_current_money-start_money)/start_money*100,2)
+    print("======================================================")
+    print("현재 원화 잔고 : " + str(my_current_money) + ", 총 수익률 : " + str(total_earning_rate) + "%")
+    print("======================================================")
+
+    if my_current_money <= margine_money or my_current_money >= limit_money or good_count == 0 or bad_count == 0 :
+        print("<<< 프로그램 정상 종료 >>>")
+        return True
+    else :
+        get_data()
+        buy(coin_name,coin_money_current_buying)
+        trade = 1
+
+def trade_1() :
+    global coin_money_current_buying, coin_money_buying, coin_name, trade
+    print("매수 진행 중...")
+    
+    while True :
+        get_data()
+        if not check_trade_complete(coin_name) and coin_money_buying != coin_money_current_buying or upbit.get_balance(coin_name) == 0.0:
+            print("재매수 진행...")
+            try :
+                if cancel_trade(coin_name) :
+                    get_data()
+                    buy(coin_name,coin_money_current_buying)
+            except : 
+                continue
+        elif check_trade_complete(coin_name) :
+            break
+        else :
+            continue
+            
+    print(coin_name + " 매수 완료, 매수 금액 : " + str(coin_money_buying) + "원")
+    trade = 2
+
+def trade_2() :
+    global earning_rate, coin_money_buying, coin_money_current_buying, cut_bad, cut_good, coin_name, trade,coin_money_current_selling, bad_count, good_count
+    get_data()
+    earning_rate = round((coin_money_current_buying - coin_money_buying) / coin_money_buying * 100,2)
+    print("현재 수익률 : " + str(earning_rate) + "%")     
+    
+    if earning_rate >= cut_good :
+        print("수익률 범위 벗어남")
+        get_data()
+        sell(coin_name,coin_money_current_selling)
+        good_count -= 1
+        trade = 3
+
+    elif earning_rate <= cut_bad :
+        bad_count -= 1
+
+def trade_3() :
+    global coin_money_current_selling, coin_money_selling, coin_name, trade
+    print("매도 진행 중")
+
+    while True :
+        get_data()
+        if not check_trade_complete(coin_name) and coin_money_selling != coin_money_current_selling :
+            print("재매도 진행...")
+            try :
+                if cancel_trade(coin_name) :
+                    get_data()
+                    sell(coin_name,coin_money_current_selling)
+            except : 
+                continue
+        elif check_trade_complete(coin_name) :
+            break
+        else :
+            continue
+    
+    print(coin_name + " 매도 완료, 매도 금액 : " + str(coin_money_selling) + "원")
+    trade = 0
+
+
+def main() :
+    global coin_name, upbit, uuid, trade
+    while True :
+        if trade == 0 :  
+            if trade_0() :
+                break
+        elif trade == 1 :
+            trade_1()
+        elif trade == 2 :
+            trade_2()
+        elif trade == 3 :
+            trade_3()
+        
+
+try :
+    main()
+except :
+    print("*** 오류발생 및 종료 ***")
+    if trade == 0 or trade == 1 :
+        cancel_trade(coin_name)
+    else :
+        trade_3()
+    print("======================================================")
+    print("현재 원화 잔고 : " + str(my_current_money) + ", 총 수익률 : " + str(total_earning_rate) + "%")
+    print("======================================================")
